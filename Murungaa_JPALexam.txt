@@ -1,0 +1,325 @@
+*****Section 1: Handling Data*****
+1.* Name: Murunga_JPALexam
+* Date: 28th March 2024
+* General Purpose: J-PAL Statistical Programming Exam
+* Specific Purpose: Handling, cleaning data, analyzing and interpreting data for JPAL statistical programming exam
+* Description: This do-file processes the datasets for analysis.
+* Author: Powel Murunga
+* Setting up//ssc install gtools //ssc install outreg2, replace
+clear all
+set more off
+2.* Import the first dataset
+import delimited "C:\\Users\\ADMIN\\Desktop\\JPAL\\maindata.csv", clear
+
+* Convert 'followup' from string to numeric with unique codes
+encode followup, gen(followup_num)
+
+* Save the intermediate file with the new numeric 'followup' variable
+save "C:\\Users\\ADMIN\\Desktop\\JPAL\\maindata_encoded.dta", replace
+
+* Repeat the process for the second dataset
+import delimited "C:\\Users\\ADMIN\\Desktop\\JPAL\\longterm.csv", clear
+encode followup, gen(followup_num)
+
+* Save the intermediate file for the second dataset
+save "C:\\Users\\ADMIN\\Desktop\\JPAL\\longterm_encoded.dta", replace
+
+* Now merge the datasets using the new followup_num variable as part of the key
+use "C:\\Users\\ADMIN\\Desktop\\JPAL\\maindata_encoded.dta", clear
+merge 1:1 folio followup_num using "C:\\Users\\ADMIN\\Desktop\\JPAL\\longterm_encoded.dta"
+* After merging the datasets
+* Check the results of the merge
+tabulate _merge
+* Preserve and remove social_security variable
+3.preserve
+keep folio social_security
+save "C:\\Users\\ADMIN\\Desktop\\JPAL\\social_security.dta", replace
+restore
+drop social_security
+
+
+*****Section 2: Cleaning Data*****
+
+* Label the 'sec' variable according to the codebook
+label define sec_labels 1 "industry" 2 "commerce" 3 "service" -997 "don't know"
+label values sec sec_labels
+* To convert 'sec' to an integer if it is currently read as a string due to the negative value, use:
+destring sec, replace force
+
+* After labeling, you can check to make sure labels are correctly applied
+tab sec
+Assuming 'total_costs_2008' is the variable with cost data, replace missing coded as -997 with '.'
+* This ensures they are not factored into the quartile calculation
+recode total_costs_2008 (-997 = .)
+* Creating the quartile variable for 2008 costs
+* Ensure that costs are numeric and non-negative before proceeding
+gen cost_quartiles = .
+su total_costs_2008, detail
+* Only create quartiles for non-missing, non-negative values
+replace cost_quartiles = cond(total_costs_2008 >= 0, xtile(total_costs_2008, 4, minmax), .)
+* Create the quartile variable for 2008 costs
+* First, we will generate a temporary variable that categorizes the costs
+* Assuming 'total_costs_2008' is the correct variable name
+egen quartile_2008_costs = xtile(total_costs_2008, 4), label
+* Now label the quartiles for better interpretation
+label define quartile_2008 1 "1st Quartile - Lowest" 2 "2nd Quartile" 3 "3rd Quartile" 4 "4th Quartile - Highest"
+label values quartile_2008_costs quartile_2008
+* Check the new quartile variable
+tab quartile_2008_costs
+*******OR ALTERNATIVELY**** (for older version of stata)
+* Replace negative values or non-applicable values with missing values 
+replace total_costs_2008 = . if total_costs_2008 < 0
+* Use the xtile command directly to create quartile variables
+xtile quartile_2008_costs = total_costs_2008, nq(4)
+* Now label the quartiles for better interpretation
+label define quartile_2008 1 "1st Quartile - Lowest" 2 "2nd Quartile" 3 "3rd Quartile" 4 "4th Quartile - Highest"
+* Check the labels
+tab quartile_2008_costs
+* Save the updated dataset
+ save "C:\Users\ADMIN\Desktop\JPAL\finaldata.dta"
+file C:\Users\ADMIN\Desktop\JPAL\finaldata.dta saved
+
+
+
+Section 3: Analyzing Data
+
+*****START OF WORK DONE BY THE RA******
+/*
+Title: Analysis and Visualization
+Author: Mike Gibson
+Input: finaldata.dta
+output: graphs and tables on impact of consulting services on firms
+*/
+
+clear
+set more off
+
+version 14.2
+cap log close
+
+********************************************************************************
+						*Section 3: Analysis*
+********************************************************************************
+
+*S3 Q1.*
+use  "/Users/michaelgibson/Desktop/MexicoFirms/Final Data/finaldata.dta"
+
+
+
+*S3 Q2
+/* I want to standardize the number of times the firm applied for a bank loan and graph it.
+*/
+
+sum loan_bank_number, detail
+
+gen std_numb_bankloan = loan_bank_number-1.969697/1.662057
+
+histogram std_numb_bankloan
+
+
+*S3 Q2.*
+
+/*estimating the LATE two different ways*/
+global controls "trmrk sec total_employees"
+
+*method 1:
+ivregress 2sls sales  (in_program=treatment) 
+
+
+*method 2:
+ivregress 2sls sales  $controls  (in_program=treatment) 
+
+***END OF ORIGINAL WORK DONE BY RA****
+
+
+The work done by RA contains several errors and issues. The path used to import the dataset is specific to a certain directory structure on a Mac. We'll change it to a relative path so it's more flexible.
+Use cd (change directory) at the start of your do-file to set the working directory.
+
+
+S3 Q1. Importing the Data it will replicate easily on various computers
+* Set the working directory to the folder where the do-file is located
+* This line changes the directory to where the do-file is saved
+cd "`c(pwd)'"
+* Now you can load the data in the same directory as the do-file
+use "finaldata.dta", clear
+****OR ALTERNATIVELY****
+* The do-file is in the /Code folder and data in /Data, set the path accordingly
+cd "../Data"
+use "finaldata.dta", clear
+cd "../Code"  * Switch back if needed for saving outputs in the Code directory**
+ssc install somepackage, replace
+
+
+S3 Q2. Standardizing a Variable
+The original standardization formula is incorrect. Standardization should subtract the mean and divide by the standard deviation. To rectify, I used the summarize command to get the mean and standard deviation and then generate the standardized variable.
+* Correcting the standardization of loan_bank_number
+summarize loan_bank_number, meanonly
+scalar mean_loan = r(mean)
+scalar sd_loan = r(sd)
+* Summarize the variable with detail to get comprehensive statistics
+summarize loan_bank_number, detail
+* Extract the mean and standard deviation from the summarized data
+scalar mean_loan = r(mean)
+scalar sd_loan = r(sd)
+* Generate the standardized loan bank number variable
+gen std_numb_bankloan2 = (loan_bank_number - mean_loan) / sd_loan
+* Create a histogram to visualize the standardized values
+histogram std_numb_bankloan2, frequency title("Standardized Loan Bank Numbers")
+* Create a histogram of the standardized variable
+histogram std_numb_bankloan2, frequency title("Histogram of Standardized Bank Loan Applications") xtitle("Standardized Number of Bank Loans") ytitle("Frequency")
+
+S3 Q3. Instrumental Variables Regression
+The program by RA was wrong and could not run because both treatment and in_program are stored as string variables, which isn't suitable for regression analysis where these should be numeric (especially in_program as it's meant to be used as an endogenous regressor in an instrumental variables setup).
+* Define global controls
+global controls "trmrk sec total_employees"
+* Check the total number of observations
+count
+* Check for missing data in key variables
+summarize sales in_program treatment
+* List if all are missing in the first few observations
+list sales in_program treatment if _n <= 10
+* Tabulate the instrumental variable and the endogenous variable to check variability
+tabulate treatment
+tabulate in_program
+describe
+
+*****Reasons*****
+****The program by RA was wrong and could not run because both treatment and in_program are stored as string variables, which isn't suitable for regression analysis where these should be numeric (especially in_program as it's meant to be used as an endogenous regressor in an instrumental variables setup).
+* Encode string variables to numeric
+encode treatment, gen(treatment_num)
+encode in_program, gen(in_program_num)
+******The coefficients of in_program may differ between the two methods if the controls are correlated with both the treatment and the outcome. Controls are included to account for factors that might affect the sales aside from the program participation. Use proper syntax for global macros and include them in the regression command*****
+
+******Re-run the ivregress Command
+With treatment and in_program now as numeric variables (treatment_num and in_program_num), modify the ivregress command accordingly:
+* IV regression without controls
+ivregress 2sls sales (in_program_num = treatment_num)
+* IV regression with controls
+global controls "trmrk sec total_employees"
+ivregress 2sls sales $controls (in_program_num = treatment_num)
+
+******Analysis of Coefficients from the Stata Output*****
+**********Model without Controls (First Model)
+Coefficient for in_program_num: 16.05882
+Standard Error: 28.09692
+P-value: 0.568
+**********Model with Controls (Second Model)********
+Coefficient for in_program_num: 16.97103
+Standard Error: 22.85807
+P-value: 0.458
+
+***Analysis***
+S3 Q3.
+The coefficients for in_program_num are very close across the two models (16.06 vs. 16.97). 
+This small change shows that the basic effect of in_program_num on sales is not significantly affected by the inclusion of control variables. 
+There's a reduction in the standard error in the model with controls (from 28.10 to 22.86). 
+This reduction indicates that the model with controls provides a more precise estimate of the effect of in_program_num due to reduced variability and better specification. 
+In both models, the coefficients of in_program_num are not statistically significant (p-values > 0.05). 
+This suggests that while the models estimate a positive effect of the program on sales, the evidence is not strong enough to confidently assert this effect as statistically significant.
+
+
+*****Why Adding Controls Does Not Significantly Change the Coefficient****
+Reduction in Omitted Variable Bias: The inclusion of controls (like trmrk, sec, total_employees) aims to account for other factors that influence sales besides the program participation (in_program_num). 
+These factors are characteristics of the firm that affect both the likelihood of program participation and the sales outcomes (e.g., larger firms might be more likely to participate and also have higher sales). 
+Non-Confounding Controls: The slight change in the coefficient and its continued lack of significance suggest that while the controls are relevant for a more accurate model specification, they are not confounding variables with respect to the relationship between in_program_num and sales. 
+In other words, they do not share a cause-and-effect relationship with both the treatment and the outcome that significantly biases the estimate of in_program_num when omitted. 
+The controls help improve the precision of the estimate (as evidenced by the reduced standard error) but do not substantially alter the estimated impact of program participation. 
+The addition of control variables in the second model does not significantly alter the estimated coefficient of in_program_num in terms of its effect size or statistical significance, suggesting that the controls are not major confounders in this analysis. 
+However, they do contribute to a more precise estimation by reducing the standard error, which is important for robust regression analysis. 
+
+
+*****Section 4: Interpreting Results****
+
+*****Question 1*****
+Why did the RA need to instrument for the in_program variable?
+The need to use an instrumental variable (IV) technique, such as instrumenting for the in_program variable, primarily arises from concerns about endogeneity within a regression model. Endogeneity biases the estimation of causal relationships, especially when it originates from omitted variable bias, reverse causality, or measurement error. 
+In econometric analysis, such factors compromise the integrity of conclusions about cause and effect because they imply that the explanatory variables may be correlated with the error term in the model. 
+Instrumental variables are also used to isolate the causal impact of program participation (in_program). 
+For instance, if both unobserved factors (such as a firm's management quality) influence a firm's decision to participate in a program as well as their sales, merely regressing sales on program participation without accounting for these latent factors would yield biased estimates. 
+Here, treatment — which is the random assignment of the program or a factor that influences participation but is exogenous to sales outcomes — serves as an instrument. This instrument ensures that the variability in program participation used in the regression is free from any correlation with unobserved confounders, thus purifying the estimates of any endogeneity bias. 
+The effectiveness of an instrumental variable, such as treatment, hinges on it satisfying two critical conditions: relevance and exogeneity. The relevance condition requires that the instrument must be strongly correlated with the endogenous explanatory variable (in_program), ensuring that it can indeed induce changes in the variable of interest. 
+The exogeneity condition mandates that the instrument must be uncorrelated with the error term of the outcome equation, ensuring that the instrument does not share any of the endogenous problems that the original explanatory variable might have. 
+Adhering to these conditions allows researchers to credibly uncover causal effects, making IV techniques especially powerful in analyses where controlled experiments are not feasible.
+
+
+*****Question 2****
+* List the first few rows to inspect the data setup
+list in 1/10
+* Summarize the dataset to understand the basic statistics and missing data
+summarize
+* Check for the presence of missing data specifically in key variables
+summarize treatment_num in_program_num sales costs profits trmrk
+* Regressing sales on treatment status
+reg sales treatment_num
+* Including controls
+reg sales treatment_num total_employees sec
+* Define a local macro with the names of the outcome variables
+local outcomes "sales profits costs trmrk"
+* Loop through each outcome and run a regression
+foreach outcome in `outcomes` {
+    reg `outcome` treatment_num
+    outreg2 using "results_`outcome`.doc", replace // optional: output results to Word
+}
+
+* Define a local macro with the names of the outcome variables
+local outcomes "sales profits costs trmrk"
+* Define a list of outcome variables
+local outcomes "sales profits costs trmrk"
+* Run regressions for each outcome with additional controls and output results
+foreach outcome in `outcomes' {
+    reg `outcome' treatment_num total_employees sec if in_program_num == 1
+    outreg2 using "results_with_controls_`outcome'.doc", replace
+}
+
+describe
+outreg2 using "regression_results.doc", replace
+outreg2 using "results_`outcome`.doc", replace // optional: output results to Word
+shellout using `"results_with_controls_sales.doc"'
+shellout using `"results_with_controls_profits.doc"'
+shellout using `"results_with_controls_costs.doc"'
+shellout using `"results_with_controls_trmrk.doc"'
+
+using the model 𝑜𝑢𝑡𝑐𝑜𝑚𝑒𝑖𝑡 = 𝛽0 + 𝛽1 ∗ 𝑡𝑟𝑒𝑎𝑡𝑚𝑒𝑛𝑡𝑖𝑡 + 𝜖𝑖𝑡
+
+Analysis of Each Outcome
+1. Sales
+Coefficient: -4.0687
+Standard Error: 14.16646
+t-value: -0.29
+P-value: 0.774
+Confidence Interval: [-31.89649, 23.75906]
+Interpretation:
+The treatment effect on sales is not statistically significant (p > 0.05). The coefficient is negative, suggesting decrease in sales due to the treatment, but given the wide confidence interval and the high p-value, we cannot confidently assert this effect.
+
+2. Profits
+Coefficient: 7.5606
+Standard Error: 17.41465
+t-value: 0.43
+P-value: 0.664
+Confidence Interval: [-26.65402, 41.77514]
+Interpretation:
+The treatment effect on profits is also not significant (p > 0.05). Although the coefficient is positive, indicating a potential increase in profits due to treatment, the lack of statistical significance and the broad confidence interval makes it less conclusive. 
+
+3. Costs
+Coefficient: 46.5707
+Standard Error: 17.25585
+t-value: 2.70
+P-value: 0.007
+Confidence Interval: [12.67538, 80.46596]
+Interpretation:
+The treatment has a significant positive effect on costs (p < 0.05), suggesting that treatment leads to higher costs. This result is statistically significant, with a relatively narrow confidence interval that does not include zero, affirming the positive impact of treatment on costs.
+
+4. Trademark (trmrk)
+Coefficient: -0.0132
+Standard Error: 0.07948
+t-value: -0.17
+P-value: 0.868
+Confidence Interval: [-0.16929, 0.14286]
+Interpretation:
+The treatment effect on the likelihood of having a trademark is not significant (p > 0.05). The coefficient is negative, but the high p-value and the confidence interval crossing zero indicate that the treatment does not significantly affect trademark status.
+
+****conclusion***
+Conclusion
+The only statistically significant effect of treatment among the outcomes tested is on costs, where treatment significantly increases costs. For sales, profits, and trademark status, the treatment effects are not statistically significant, meaning we cannot assert that the treatment has a definitive impact on these outcomes based on this data. 
+This interpretation is crucial for decision-making, especially in assessing the economic impact of the treatment and determining whether its benefits (if any) outweigh the increased costs.
+
